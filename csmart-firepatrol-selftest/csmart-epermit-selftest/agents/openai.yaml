@@ -1,4 +1,0 @@
-interface:
-  display_name: "C-Smart E-Permit Self-Test"
-  short_description: "Run safe C-Smart permit WhatsApp self-tests"
-  default_prompt: "Use $csmart-epermit-selftest to run a test-group-only C-Smart permit self-test and report PASS, FAIL, or BLOCKED."

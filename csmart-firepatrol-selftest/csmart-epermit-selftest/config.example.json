@@ -1,6 +1,0 @@
-{
-  "bot_root": "/root/whatsapp-bot",
-  "sender_root": "/home/claw/self-testing-bot-run",
-  "records_url": "http://llm-ai.c-smart.hk/records/today",
-  "output_root": "outputs"
-}
