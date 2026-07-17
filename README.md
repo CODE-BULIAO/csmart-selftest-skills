@@ -129,7 +129,7 @@ lark-mcp mcp -a <APP_ID> -s <APP_SECRET> --mode streamable --port 3456 -l zh
 
 ## 维护者
 
-- C-Smart 开发团队
+-  Yiwen
 
 ## 许可证
 
