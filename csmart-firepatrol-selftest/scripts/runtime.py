@@ -50,6 +50,36 @@ def extract_points(source: str, zone_var_name: str = "") -> list[str]:
     return points
 
 
+def extract_profile_block(source: str, zone_var_name: str) -> str:
+    """Extract the code block surrounding the target zone variable."""
+    if not zone_var_name:
+        return source
+    pos = source.find(zone_var_name)
+    if pos == -1:
+        return source
+
+    block_start = 0
+    block_end = len(source)
+
+    for pattern in [r"\nconst\s+", r"\nmodule\.exports", r"\nfunction\s+"]:
+        for match in re.finditer(pattern, source[:pos]):
+            block_start = match.start()
+
+    zone_end = pos + len(zone_var_name)
+    for pattern in [r"\nconst\s+\w*(?:ZONES|FIRE_PATROL)", r"\nmodule\.exports"]:
+        match = re.search(pattern, source[zone_end:])
+        if match:
+            block_end = min(block_end, zone_end + match.start())
+
+    return source[block_start:block_end]
+
+
+def extract_schedules(source: str, zone_var_name: str = "") -> list[str]:
+    """Extract schedules, scoped to the target profile when zone_var_name is given."""
+    block = extract_profile_block(source, zone_var_name)
+    return [item.strip() for item in re.findall(r"schedule\s*:\s*\[([^\]]+)\]", block)]
+
+
 def discover(bot_root: Path, profile: dict | None = None) -> dict[str, object]:
     constants_path = bot_root / "group_constants.js"
     profile_path = bot_root / "group_process/fire_patrol_process.js"
@@ -76,7 +106,7 @@ def discover(bot_root: Path, profile: dict | None = None) -> dict[str, object]:
         "test_group_safe": bool(test) and test.endswith("@g.us") and test != production,
         "operational_start_hour": int(start.group(1)) if start else None,
         "valid_points": extract_points(fire_profile, zone_var),
-        "schedules": [item.strip() for item in re.findall(r"schedule\s*:\s*\[([^\]]+)\]", fire_profile)],
+        "schedules": extract_schedules(fire_profile, zone_var),
         "data_file": str(bot_root / "data/fire_patrol.json"),
     }
 

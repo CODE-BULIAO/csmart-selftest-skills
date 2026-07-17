@@ -56,6 +56,7 @@ def build_substitutions(profile: dict) -> dict[str, str | list[str]]:
         "SPECIAL_POINTS": find_special_points(zones),
         "TRIGGER_WORD": trigger_words[0] if trigger_words else "",
         "ALL_TRIGGERS": trigger_words,
+        "SEPARATORS": reqs.get("separators", []),
     }
     return subs
 
@@ -81,6 +82,36 @@ def substitute(value: object, subs: dict[str, str | list[str]]) -> object:
 def generate_expanded_cases(contract: dict, subs: dict[str, str | list[str]]) -> list[dict]:
     contract_id = contract["id"]
     params = contract.get("params", [])
+    special_points = subs.get("SPECIAL_POINTS", [])
+
+    if contract_id == "GEN-008":
+        if not special_points:
+            return [{
+                "id": contract_id,
+                "priority": contract["priority"],
+                "requirement": contract["requirement"],
+                "input": "",
+                "expected": "",
+                "evidence": [],
+                "reason": contract.get("reason", ""),
+                "tags": contract.get("tags", []),
+                "status": "NOT_APPLICABLE",
+                "not_applicable_reason": "项目无非数字特殊点位，跳过此用例",
+            }]
+        cases = []
+        for point in special_points[:5]:
+            cases.append({
+                "id": f"{contract_id}-{point}",
+                "priority": contract["priority"],
+                "requirement": contract["requirement"],
+                "input": f"{subs['TRIGGER_WORD']} {point}",
+                "expected": f"{point} 标记为已上报且归属正确区域",
+                "evidence": contract.get("evidence", []),
+                "reason": contract.get("reason", ""),
+                "tags": contract.get("tags", []),
+            })
+        return cases
+
     if not params:
         case = dict(contract)
         case["input"] = substitute(contract.get("input", ""), subs)
@@ -88,9 +119,7 @@ def generate_expanded_cases(contract: dict, subs: dict[str, str | list[str]]) ->
         case.pop("params", None)
         return [case]
 
-    special_points = subs.get("SPECIAL_POINTS", [])
     triggers = subs.get("ALL_TRIGGERS", [])
-    separators = subs.get("SEPARATORS", [])
 
     if contract_id == "GEN-003":
         cases = []
@@ -107,21 +136,6 @@ def generate_expanded_cases(contract: dict, subs: dict[str, str | list[str]]) ->
             })
         return cases
 
-    if contract_id == "GEN-008" and special_points:
-        cases = []
-        for point in special_points[:5]:
-            cases.append({
-                "id": f"{contract_id}-{point}",
-                "priority": contract["priority"],
-                "requirement": contract["requirement"],
-                "input": f"{subs['TRIGGER_WORD']} {point}",
-                "expected": f"{point} 标记为已上报且归属正确区域",
-                "evidence": contract.get("evidence", []),
-                "reason": contract.get("reason", ""),
-                "tags": contract.get("tags", []),
-            })
-        return cases
-
     case = dict(contract)
     case["input"] = substitute(contract.get("input", ""), subs)
     case["expected"] = substitute(contract.get("expected", ""), subs)
@@ -129,42 +143,50 @@ def generate_expanded_cases(contract: dict, subs: dict[str, str | list[str]]) ->
     return [case]
 
 
-def generate(contracts_path: Path, profile_path: Path) -> list[dict]:
+def matches_include(case: dict, include_tags: set[str]) -> bool:
+    if not include_tags:
+        return True
+    case_tags = set(case.get("tags", []))
+    return bool(case_tags & include_tags)
+
+
+def generate(contracts_path: Path, profile_path: Path, include_tags: set[str] | None = None) -> list[dict]:
     contracts = load_contracts(contracts_path)
     profile = load_profile(profile_path)
     subs = build_substitutions(profile)
+    tags = include_tags or set()
     plan: list[dict] = []
     seen_ids: set[str] = set()
     for contract in contracts:
         expanded = generate_expanded_cases(contract, subs)
         for case in expanded:
-            case_id = case["id"]
+            case_id = str(case.get("id", ""))
             if case_id in seen_ids:
-                raise RuntimeError(f"重复用例 ID：{case_id}")
+                continue
             seen_ids.add(case_id)
-            plan.append(case)
+            if matches_include(case, tags):
+                plan.append(case)
     return plan
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--contracts", type=Path, required=True, help="通用契约文件路径")
-    parser.add_argument("--profile", type=Path, required=True, help="项目配置文件路径")
-    parser.add_argument("--out", type=Path, required=True, help="输出测试计划路径")
+    parser.add_argument("--contracts", type=Path, required=True)
+    parser.add_argument("--profile", type=Path, required=True)
+    parser.add_argument("--include", type=str, default="", help="逗号分隔的标签，只生成匹配的用例")
+    parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
     try:
-        plan = generate(args.contracts, args.profile)
+        include_tags = set(t.strip() for t in args.include.split(",") if t.strip()) if args.include else None
+        plan = generate(args.contracts, args.profile, include_tags)
     except (OSError, json.JSONDecodeError, RuntimeError) as exc:
         print(json.dumps({"status": "BLOCKED", "reason": str(exc)}, ensure_ascii=False))
         return 2
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(
-        "\n".join(json.dumps(case, ensure_ascii=False) for case in plan) + "\n",
-        encoding="utf-8",
-    )
-    print(json.dumps({"status": "READY", "count": len(plan), "out": str(args.out)}, ensure_ascii=False))
+    args.out.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in plan), encoding="utf-8")
+    print(json.dumps({"status": "READY", "cases": len(plan), "out": str(args.out)}, ensure_ascii=False))
     return 0
 
 

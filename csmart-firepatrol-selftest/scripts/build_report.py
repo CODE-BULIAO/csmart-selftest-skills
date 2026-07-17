@@ -42,7 +42,7 @@ def usage_lines(usage: dict) -> list[str]:
 
 def render(rows: list[dict], run_id: str, requirements: str, environment: str, scope: str, usage: dict) -> str:
     statuses = Counter(str(row.get("status", "")) for row in rows)
-    invalid = sorted({status for status in statuses if status not in {"PASS", "FAIL", "BLOCKED"}})
+    invalid = sorted({status for status in statuses if status not in {"PASS", "FAIL", "BLOCKED", "NOT_APPLICABLE"}})
     if invalid:
         raise RuntimeError("非法状态：" + "、".join(invalid))
     lines = [
@@ -52,7 +52,7 @@ def render(rows: list[dict], run_id: str, requirements: str, environment: str, s
         f"- 需求来源：{requirements}",
         f"- 测试环境：{environment}",
         f"- 测试范围：{scope}",
-        f"- 结果：PASS {statuses['PASS']} / FAIL {statuses['FAIL']} / BLOCKED {statuses['BLOCKED']}",
+        f"- 结果：PASS {statuses['PASS']} / FAIL {statuses['FAIL']} / BLOCKED {statuses['BLOCKED']} / NOT_APPLICABLE {statuses['NOT_APPLICABLE']}",
         "",
         "## 运行消耗",
         "",
